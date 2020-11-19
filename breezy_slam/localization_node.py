@@ -21,7 +21,7 @@ along with this code.  If not, see <http://www.gnu.org/licenses/>.
 
 MAP_SIZE_PIXELS         = 500
 MAP_SIZE_METERS         = 10
-LIDAR_DEVICE            = '/dev/ttyUSB1'
+LIDAR_DEVICE            = '/dev/ttyUSB0'
 
 
 # Ideally we could use all 250 or so samples that the RPLidar delivers in one
@@ -34,41 +34,36 @@ from breezyslam.sensors import RPLidarA1 as LaserModel
 from rplidar import RPLidar as Lidar
 from roboviz import MapVisualizer
 
-def main():
-    # Connect to Lidar unit
-    lidar = Lidar(LIDAR_DEVICE)
+import rclpy
+from rclpy.node import Node
+from sensor_msgs.msg import LaserScan
 
-    # Create an RMHC SLAM object with a laser model and optional robot model
-    slam = RMHC_SLAM(LaserModel(), MAP_SIZE_PIXELS, MAP_SIZE_METERS)
+class DriveCommandNode(Node):
 
-    # Set up a SLAM display
-    viz = MapVisualizer(MAP_SIZE_PIXELS, MAP_SIZE_METERS, 'SLAM')
+    def __init__(self):
+        super().__init__('cont')
 
-    # Initialize an empty trajectory
-    trajectory = []
+        self.subscriber = self.create_subscription(LaserScan, '/scan', self.slamCallback,10)
+        # self.publisher = self.create_publisher(Twist, '/cmd_vel', 1)
+        print("Setup Finished")
 
-    # Initialize empty map
-    mapbytes = bytearray(MAP_SIZE_PIXELS * MAP_SIZE_PIXELS)
+        self.slam = RMHC_SLAM(LaserModel(), MAP_SIZE_PIXELS, MAP_SIZE_METERS)
 
-    # Create an iterator to collect scan data from the RPLidar
-    iterator = lidar.iter_scans()
+        self.viz = MapVisualizer(MAP_SIZE_PIXELS, MAP_SIZE_METERS, 'SLAM')
 
-    # We will use these to store previous scan in case current scan is inadequate
-    previous_distances = None
-    previous_angles    = None
+        self.mapbytes = bytearray(MAP_SIZE_PIXELS * MAP_SIZE_PIXELS)
 
-    # First scan is crap, so ignore it
-    next(iterator)
+        self.previous_distances = None
+        self.previous_angles    = None
 
-    while True:
 
-        # Extract (quality, angle, distance) triples from current scan
-        items = [item for item in next(iterator)]
+    def motionCallback(self,data):
 
-        # Extract distances and angles from triples
-        distances = [item[2] for item in items]
-        print(distances)
-        angles    = [item[1] for item in items]
+
+        distances = data.ranges
+        angles  = [i for i in range(int(self.angle_min),int(self.angle_max))]
+        if len(self.angles) != len(self.distances):
+            self.angles = self.angles[:len(self.distances)]
 
         # Update SLAM with current Lidar scan and scan angles if adequate
         if len(distances) > MIN_SAMPLES:
@@ -89,6 +84,49 @@ def main():
         # Display map and robot pose, exiting gracefully if user closes it
         if not viz.display(x/1000., y/1000., theta, mapbytes):
             exit(0)
+
+
+def main(args=None):
+    rclpy.init(args=args)
+
+    minimal_publisher = DriveCommandNode()
+
+    rclpy.spin(minimal_publisher)
+
+    # Destroy the node explicitly
+    # (optional - otherwise it will be done automatically
+    # when the garbage collector destroys the node object)
+    minimal_publisher.destroy_node()
+    rclpy.shutdown()
+
+
+def main():
+    # Connect to Lidar unit
+    lidar = Lidar(LIDAR_DEVICE)
+
+    # Create an RMHC SLAM object with a laser model and optional robot model
+
+
+    # Set up a SLAM display
+
+
+    # Initialize empty map
+
+
+
+    # We will use these to store previous scan in case current scan is inadequate
+
+
+    # First scan is crap, so ignore it
+    next(iterator)
+
+    while True:
+
+        # Extract (quality, angle, distance) triples from current scan
+        items = [item for item in next(iterator)]
+
+        # Extract distances and angles from triples
+
 
     # Shut down the lidar connection
     lidar.stop()
